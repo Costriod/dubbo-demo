@@ -9,7 +9,7 @@ import com.alibaba.dubbo.config.ServiceConfig;
 import com.example.demo.common.HelloService;
 import com.example.demo.common.impl.HelloServiceImpl;
 
-public class Server {
+public class CustomServer {
 
 	public static void main(String[] args) throws IOException {
 		HelloService helloService = new HelloServiceImpl();

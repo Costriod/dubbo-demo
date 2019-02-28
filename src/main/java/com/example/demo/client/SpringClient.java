@@ -5,7 +5,7 @@ import org.springframework.context.support.ClassPathXmlApplicationContext;
 import com.example.demo.common.HelloService;
 import com.example.demo.common.User;
 
-public class App {
+public class SpringClient {
 
 	public static void main(String[] args) {
 		ClassPathXmlApplicationContext context = new ClassPathXmlApplicationContext("classpath:client.xml");

@@ -6,7 +6,7 @@ import com.alibaba.dubbo.config.RegistryConfig;
 import com.example.demo.common.HelloService;
 import com.example.demo.common.User;
 
-public class Client {
+public class CustomClient {
 
 	public static void main(String[] args) {
 		// 当前应用配置

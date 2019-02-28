@@ -10,7 +10,7 @@ import com.alibaba.dubbo.config.RegistryConfig;
 import com.alibaba.dubbo.config.ServiceConfig;
 import com.example.demo.common.HelloService;
 
-public class App {
+public class SpringServer {
 
 	public static void main(String[] args) throws IOException {
 		ClassPathXmlApplicationContext context = new ClassPathXmlApplicationContext("classpath:server.xml");
