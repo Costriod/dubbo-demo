@@ -9,7 +9,7 @@
     <dubbo:parameter key="qos.accept.foreign.ip" value="false"/>
     <dubbo:parameter key="qos.port" value="33333"/>
     </dubbo:application>
-    <dubbo:registry address="zookeeper://127.0.0.1:2181" client="zkclient"/>
+    <dubbo:registry address="zookeeper://192.168.1.120:2181" client="zkclient"/>
     <dubbo:protocol name="dubbo" port="20890" server="netty4"/>
     <bean id="helloService" class="com.example.demo.common.impl.HelloServiceImpl"/>
     <dubbo:service interface="com.example.demo.common.HelloService" ref="helloService"/>
