@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:dubbo="http://dubbo.apache.org/schema/dubbo"
+       xmlns="http://www.springframework.org/schema/beans"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+       http://dubbo.apache.org/schema/dubbo http://dubbo.apache.org/schema/dubbo/dubbo.xsd">
+    <dubbo:application name="client">
+    <dubbo:parameter key="qos.enable" value="true"/>
+    <dubbo:parameter key="qos.accept.foreign.ip" value="false"/>
+    <dubbo:parameter key="qos.port" value="22222"/>
+    </dubbo:application>
+    <dubbo:consumer client="netty4" />
+    <dubbo:registry address="zookeeper://127.0.0.1:2181" client="zkclient"/>
+    <dubbo:reference id="helloService" interface="com.example.demo.common.HelloService"/>
+</beans>

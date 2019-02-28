@@ -1,6 +1,12 @@
 package com.example.demo.common;
 
-public class User {
+import java.io.Serializable;
+
+public class User implements Serializable{
+	/**
+	 * 
+	 */
+	private static final long serialVersionUID = 4400118031233058836L;
 	private String name;
 
 	public String getName() {
@@ -13,5 +19,10 @@ public class User {
 
 	public User(String name) {
 		this.name = name;
+	}
+
+	@Override
+	public String toString() {
+		return "User [name=" + name + "]";
 	}
 }
