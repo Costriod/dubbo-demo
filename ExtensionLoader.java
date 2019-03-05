@@ -90,7 +90,7 @@ public class ExtensionLoader<T> {
     private final ConcurrentMap<Class<?>, String> cachedNames = new ConcurrentHashMap<Class<?>, String>();
 
     /**
-     * 保存扩展类别名与类对象的映射，如：
+     * 保存扩展类别名与类对象的映射（带有Adaptive注解的类不包括在内），如：
      * spring=com.alibaba.dubbo.config.spring.status.SpringStatusChecker
      * 则会保存spring（别名）---> com.alibaba.dubbo.config.spring.status.SpringStatusChecker的映射关系
      */
@@ -484,7 +484,7 @@ public class ExtensionLoader<T> {
     }
 
     /**
-     * 返回
+     * 返回type全局唯一的Adaptive类的一个对象
      */
     @SuppressWarnings("unchecked")
     public T getAdaptiveExtension() {
@@ -537,7 +537,8 @@ public class ExtensionLoader<T> {
     }
 
     /**
-     * 创建扩展类对象
+     * 通过别名找出当前type对应的实现类，创建类对象
+     * 创建对象之后，判断当前type的实现类里面哪些类有一个参数的构造方法（构造方法参数也是type类型），然后嵌套执行构造函数
      */
     @SuppressWarnings("unchecked")
     private T createExtension(String name) {
@@ -555,6 +556,7 @@ public class ExtensionLoader<T> {
             Set<Class<?>> wrapperClasses = cachedWrapperClasses;
             if (wrapperClasses != null && !wrapperClasses.isEmpty()) {
                 for (Class<?> wrapperClass : wrapperClasses) {
+                	//嵌套执行wrapper类的构造方法，并且把当前instance作为构造函数的参数传进去，这样就有可能创建嵌套的对象
                     instance = injectExtension((T) wrapperClass.getConstructor(type).newInstance(instance));
                 }
             }
@@ -565,19 +567,25 @@ public class ExtensionLoader<T> {
         }
     }
 
+    /**
+     * 给对象的内部属性赋值，仅会对Adaptive类的对象
+     * 如适配类有setXxx(Type param)方法，则从objectFactory找出Type类型别名为xxx的适配对象，并执行setXxx方法
+     * @param instance
+     * @return
+     */
     private T injectExtension(T instance) {
         try {
             if (objectFactory != null) {
-                for (Method method : instance.getClass().getMethods()) {
+                for (Method method : instance.getClass().getMethods()) {//遍历适配类的方法（不包括父类方法）
                     if (method.getName().startsWith("set")
                             && method.getParameterTypes().length == 1
-                            && Modifier.isPublic(method.getModifiers())) {
-                        Class<?> pt = method.getParameterTypes()[0];
+                            && Modifier.isPublic(method.getModifiers())) {//方法以set开头，只包含一个参数，方法为public
+                        Class<?> pt = method.getParameterTypes()[0];//第一个参数类型
                         try {
-                            String property = method.getName().length() > 3 ? method.getName().substring(3, 4).toLowerCase() + method.getName().substring(4) : "";
-                            Object object = objectFactory.getExtension(pt, property);
+                            String property = method.getName().length() > 3 ? method.getName().substring(3, 4).toLowerCase() + method.getName().substring(4) : "";//类内部属性名
+                            Object object = objectFactory.getExtension(pt, property);//获取该type全局唯一Adaptive类的对象，这个对象是会缓存起来
                             if (object != null) {
-                                method.invoke(instance, object);
+                                method.invoke(instance, object);//执行set方法，给属性赋值
                             }
                         } catch (Exception e) {
                             logger.error("fail to inject via method " + method.getName()
@@ -843,7 +851,7 @@ public class ExtensionLoader<T> {
 
     /**
      * 1.判断类有没有带Adaptive注解，如果有则立即返回
-     * 2.如果没有则创建一个$Adaptive类，并编译
+     * 2.如果没有则创建一个$Adaptive类，并编译返回（需要注意）
      */
     private Class<?> getAdaptiveExtensionClass() {
         getExtensionClasses();
@@ -854,7 +862,7 @@ public class ExtensionLoader<T> {
     }
 
     /**
-     * 创建一个$Adaptive的java代码，并编译成class
+     * 创建一个$Adaptive的java代码，并编译成class，type没有唯一的Adaptive类，则这里为type接口创建一个Adaptive类，但是仅对Adaptive注解修饰的方法创建适配方法，其他方法都会抛异常
      */
     private Class<?> createAdaptiveExtensionClass() {
         String code = createAdaptiveExtensionClassCode();
@@ -864,6 +872,10 @@ public class ExtensionLoader<T> {
         return compiler.compile(code, classLoader);
     }
 
+    /**
+     * 为接口创建一个$Adaptive类，需要注意的是仅仅会对接口里面Adaptive注解修饰的方法创建适配方法，其他方法都是直接抛异常
+     * @return
+     */
     private String createAdaptiveExtensionClassCode() {
         StringBuilder codeBuilder = new StringBuilder();
         Method[] methods = type.getMethods();
@@ -874,7 +886,7 @@ public class ExtensionLoader<T> {
                 break;
             }
         }
-        // no need to generate adaptive class since there's no adaptive method found.
+        // 如果没有Adaptive标注的方法则无需创建$Adaptive类
         if (!hasAdaptiveAnnotation)
             throw new IllegalStateException("No adaptive method on extension " + type.getName() + ", refuse to create the adaptive class!");
 
@@ -883,13 +895,13 @@ public class ExtensionLoader<T> {
         codeBuilder.append("\npublic class ").append(type.getSimpleName()).append("$Adaptive").append(" implements ").append(type.getCanonicalName()).append(" {");
 
         for (Method method : methods) {
-            Class<?> rt = method.getReturnType();
-            Class<?>[] pts = method.getParameterTypes();
-            Class<?>[] ets = method.getExceptionTypes();
+            Class<?> rt = method.getReturnType();//返回类型
+            Class<?>[] pts = method.getParameterTypes();//参数类型数组
+            Class<?>[] ets = method.getExceptionTypes();//可能抛出的异常类型数组
 
             Adaptive adaptiveAnnotation = method.getAnnotation(Adaptive.class);
             StringBuilder code = new StringBuilder(512);
-            if (adaptiveAnnotation == null) {
+            if (adaptiveAnnotation == null) {//如果方法没有Adaptive注解
                 code.append("throw new UnsupportedOperationException(\"method ")
                         .append(method.toString()).append(" of interface ")
                         .append(type.getName()).append(" is not adaptive method!\");");
