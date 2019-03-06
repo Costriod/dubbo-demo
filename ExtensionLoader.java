@@ -51,10 +51,16 @@ import java.util.regex.Pattern;
  * <li>default extension is an adaptive instance</li>
  * </ul>
  *
- * @see <a href="http://java.sun.com/j2se/1.5.0/docs/guide/jar/jar.html#Service%20Provider">Service Provider in Java 5</a>
- * @see com.alibaba.dubbo.common.extension.SPI
- * @see com.alibaba.dubbo.common.extension.Adaptive
- * @see com.alibaba.dubbo.common.extension.Activate
+ * 1.接口上面用SPI注解标注一下，如果SPI有value，cachedDefaultName = SPI.value()
+ * 2.接口实现类会被拆分成3个部分：Adaptive适配类/Wrapper类/其他
+ * 2.1 Adaptive适配类：Adaptive注解标注的子类，或者动态生成的Adaptive类（因为每一个SPI注解标注的接口都必须有一个Adaptive类，如果没有则动态生成一个）
+ * 2.2 Wrapper类：接口实现类如果有构造函数，并且构造函数的参数为其接口类型，如public Wrapper(Type type), 其中Wrapper实现Type接口，这种类会单独丢到一个set里面
+ * 2.3 其他类：除上面2种类型的类都会单独放入cachedNames这个Map
+ * 
+ * 3.injectExtension方法会自动给扩展类实例执行setXxx方法，通过这种方式注入
+ * 4.getAdaptiveExtension()获取接口全局唯一的Adaptive类对象，如果没有则创建，创建之后会执行injectExtension方法注入
+ * 5.getExtension()获取接口实现类的实例，如果没有则创建，创建之后会执行injectExtension方法注入，但是如果接口有Wrapper类，
+ * 则会循环执行Wrapper构造函数创建一个嵌套对象，嵌套对象也会执行injectExtension方法注入
  */
 public class ExtensionLoader<T> {
 
@@ -85,12 +91,12 @@ public class ExtensionLoader<T> {
 
     private final ExtensionFactory objectFactory;
     /**
-     * 保存扩展类与名称的映射
+     * 保存扩展类与名称的映射，除了Wrapper类和带有Adaptive注解的类
      */
     private final ConcurrentMap<Class<?>, String> cachedNames = new ConcurrentHashMap<Class<?>, String>();
 
     /**
-     * 保存扩展类别名与类对象的映射（带有Adaptive注解的类不包括在内），如：
+     * 保存扩展类别名与类对象的映射（Wrapper类和带有Adaptive注解的类不包括在内），如：
      * spring=com.alibaba.dubbo.config.spring.status.SpringStatusChecker
      * 则会保存spring（别名）---> com.alibaba.dubbo.config.spring.status.SpringStatusChecker的映射关系
      */
@@ -103,11 +109,17 @@ public class ExtensionLoader<T> {
      * 类别名与类对象实例的映射
      */
     private final ConcurrentMap<String, Holder<Object>> cachedInstances = new ConcurrentHashMap<String, Holder<Object>>();
+    /**
+     * 唯一的Adaptive类的一个对象，每个SPI接口只有唯一一个Adaptive对象
+     */
     private final Holder<Object> cachedAdaptiveInstance = new Holder<Object>();
     /**
      * type接口的实现类里面唯一一个带Adaptive注解的类（不可能有多个）
      */
     private volatile Class<?> cachedAdaptiveClass = null;
+    /**
+     * SPI注解里面默认的value，为空则cachedDefaultName为null
+     */
     private String cachedDefaultName;
     private volatile Throwable createAdaptiveInstanceError;
     /**
@@ -200,7 +212,7 @@ public class ExtensionLoader<T> {
     }
 
     /**
-     * This is equivalent to {@code getActivateExtension(url, url.getParameter(key).split(","), null)}
+     * 返回标有Activate注解的类实例 {@code getActivateExtension(url, url.getParameter(key).split(","), null)}
      *
      * @param url   url
      * @param key   url parameter key which used to get extension point names
