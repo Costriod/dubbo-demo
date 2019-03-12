@@ -119,6 +119,9 @@ public class ExtensionLoader<T> {
 
     private final Class<?> type;
 
+    /**
+     * 一般是AdaptiveExtensionFactory
+     */
     private final ExtensionFactory objectFactory;
     /**
      * 保存扩展类与名称的映射，除了Wrapper类和带有Adaptive注解的类
