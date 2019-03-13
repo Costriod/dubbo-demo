@@ -147,4 +147,4 @@ public class ProtocolFilterWrapper implements Protocol {
 
 注意上面的filter链是从filters列表最后一个开始
 
-![avatar](./images/filter.PNG)
+![avatar](https://github.com/Costriod/dubbo-demo/tree/master/images/filter.PNG)
