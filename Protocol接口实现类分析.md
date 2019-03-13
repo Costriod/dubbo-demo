@@ -145,6 +145,6 @@ public class ProtocolFilterWrapper implements Protocol {
 }
 ```
 
-注意上面的filter链是从filters列表最后一个开始
+注意上面的buildInvokerChain是从filters列表最后一个开始
 
 ![avatar](images/filters.PNG)
