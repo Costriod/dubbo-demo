@@ -1,6 +1,5 @@
-# ExtensionLoader源码分析
+# Protocol接口源码分析
 
-### Protocol接口源码分析
 ```java
 @SPI("dubbo")//SPI注解里面有默认名字
 public interface Protocol {
@@ -64,28 +63,88 @@ public interface Protocol {
 
 这些实现类里面没有任何一个类有@Adaptive注解，所以最终ExtensionLoader会自动创建$Adaptive类，并且会自动创建包装类对象
 
-其中包装类有如下几个：
+###ProtocolFilterWrapper源码分析
 
-> - com.alibaba.dubbo.rpc.protocol.ProtocolFilterWrapper
->
->   ProtocolFilterWrapper会自动创建Filter执行链
->
-> - com.alibaba.dubbo.rpc.protocol.ProtocolListenerWrapper
->
->   ProtocolListenerWrapper底层也是调用了内部嵌套对象的同样方法
->
-> - com.alibaba.dubbo.rpc.protocol.dubbo.DubboProtocol
->
->   DubboProtocol才是创建server并建立端口监听的地方
->
-> - com.alibaba.dubbo.rpc.protocol.injvm.InjvmProtocol
->
->   本地服务，无需建立端口监听
->
-> - com.alibaba.dubbo.registry.integration.RegistryProtocol
->
->   RegistryProtocol将服务注册到注册中心
->
-> - com.alibaba.dubbo.qos.protocol.QosProtocolWrapper
->
->   Qos在线运维相关
+```java
+public class ProtocolFilterWrapper implements Protocol {
+    private final Protocol protocol;
+    /**
+     * 因为ProtocolFilterWrapper类有一个参数的构造方法，并且方法参数为其接口子类对象，所以这个会被当成wrapper类
+     */
+    public ProtocolFilterWrapper(Protocol protocol) {
+        if (protocol == null) {
+            throw new IllegalArgumentException("protocol == null");
+        }
+        this.protocol = protocol;
+    }
+    /**注意这个方法获取Filter所有的Activate子类，构造一个嵌套的invoke执行链*/
+    private static <T> Invoker<T> buildInvokerChain(final Invoker<T> invoker, String key, String group) {
+        Invoker<T> last = invoker;
+        List<Filter> filters = ExtensionLoader.getExtensionLoader(Filter.class).getActivateExtension(invoker.getUrl(), key, group);
+        if (!filters.isEmpty()) {
+            for (int i = filters.size() - 1; i >= 0; i--) {
+                final Filter filter = filters.get(i);
+                final Invoker<T> next = last;
+                last = new Invoker<T>() {
+                    @Override
+                    public Class<T> getInterface() {
+                        return invoker.getInterface();
+                    }
+                    @Override
+                    public URL getUrl() {
+                        return invoker.getUrl();
+                    }
+                    @Override
+                    public boolean isAvailable() {
+                        return invoker.isAvailable();
+                    }
+                    @Override
+                    public Result invoke(Invocation invocation) throws RpcException {
+                        return filter.invoke(next, invocation);
+                    }
+                    @Override
+                    public void destroy() {
+                        invoker.destroy();
+                    }
+                    @Override
+                    public String toString() {
+                        return invoker.toString();
+                    }
+                };
+            }
+        }
+        return last;
+    }
+
+    @Override
+    public int getDefaultPort() {
+        return protocol.getDefaultPort();
+    }
+
+    @Override
+    public <T> Exporter<T> export(Invoker<T> invoker) throws RpcException {
+        if (Constants.REGISTRY_PROTOCOL.equals(invoker.getUrl().getProtocol())) {
+            return protocol.export(invoker);
+        }
+        return protocol.export(buildInvokerChain(invoker, Constants.SERVICE_FILTER_KEY, Constants.PROVIDER));
+    }
+
+    @Override
+    public <T> Invoker<T> refer(Class<T> type, URL url) throws RpcException {
+        if (Constants.REGISTRY_PROTOCOL.equals(url.getProtocol())) {
+            return protocol.refer(type, url);
+        }
+        return buildInvokerChain(protocol.refer(type, url), Constants.REFERENCE_FILTER_KEY, Constants.CONSUMER);
+    }
+
+    @Override
+    public void destroy() {
+        protocol.destroy();
+    }
+
+}
+```
+
+注意上面的filter链是从filters列表最后一个开始
+
+![avatar](./images/filter.PNG)
