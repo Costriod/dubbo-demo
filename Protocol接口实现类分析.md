@@ -156,17 +156,21 @@ public class ProtocolFilterWrapper implements Protocol {
 ExceptionFilter:server端执行过程中如果抛异常，分以下几种情况
 
 > 1、如果不是RuntimeException并且是Exception，则直接返回给client
+>```java
 >  if (!(exception instanceof RuntimeException) && (exception instanceof Exception)) {
-> ​      return result;
+>       return result;
 > }
+>```
 >
 > 2、如果是那种在方法后面事先声明了的异常，如User getUser(String name) throws CustomException类似这种，那么这个也会原模原样返回给client，然而client端可能没有这个CustomException自定义异常，最后会抛出java.lang.ClassNotFoundException（亲测会抛异常）
+>```java
 > Class<?>[] exceptionClassses = method.getExceptionTypes();
 > for (Class<?> exceptionClass : exceptionClassses) {
 >   if (exception.getClass().equals(exceptionClass)) {
-> ​     return result;
+>      return result;
 >   }
 > }
+>```
 > 3、如果异常类型是JDK自带的异常，也就是异常类型是java.xxx.xxx这种，这个也会原样返回给client
 >
 > 4、如果是RpcException类型或者RpcException子类类型，则原样返回给client
