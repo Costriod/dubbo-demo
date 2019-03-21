@@ -61,7 +61,7 @@ public interface Protocol {
 - registry=com.alibaba.dubbo.registry.integration.RegistryProtocol
 - qos=com.alibaba.dubbo.qos.protocol.QosProtocolWrapper
 
-这些实现类里面没有任何一个类有@Adaptive注解，所以最终ExtensionLoader会自动创建$Adaptive类，并且会自动创建包装类对象
+这些实现类里面没有任何一个类有@Adaptive注解，所以最终ExtensionLoader会自动创建Adaptive类，并且会自动创建嵌套包装类对象（而且包装类对象会执行ExtensionLoader的injectExtension操作）
 
 ###ProtocolFilterWrapper源码分析
 
@@ -148,3 +148,35 @@ public class ProtocolFilterWrapper implements Protocol {
 注意上面的buildInvokerChain是从filters列表最后一个开始
 
 ![avatar](images/filters.PNG)
+
+
+
+需要重点注意这几个类：
+
+ExceptionFilter:server端执行过程中如果抛异常，分以下几种情况
+
+> 1、如果不是RuntimeException并且是Exception，则直接返回给client
+>  if (!(exception instanceof RuntimeException) && (exception instanceof Exception)) {
+> ​      return result;
+> }
+>
+> 2、如果是那种在方法后面事先声明了的异常，如User getUser(String name) throws CustomException类似这种，那么这个也会原模原样返回给client，然而client端可能没有这个CustomException自定义异常，最后会抛出java.lang.ClassNotFoundException（亲测会抛异常）
+> Class<?>[] exceptionClassses = method.getExceptionTypes();
+> for (Class<?> exceptionClass : exceptionClassses) {
+>   if (exception.getClass().equals(exceptionClass)) {
+> ​     return result;
+>   }
+> }
+> 3、如果异常类型是JDK自带的异常，也就是异常类型是java.xxx.xxx这种，这个也会原样返回给client
+>
+> 4、如果是RpcException类型或者RpcException子类类型，则原样返回给client
+>
+> 5、如果不是上述情况，则一律封装成RuntimeException返回给client
+
+
+
+MonitorFilter: 这个类里面会监控server端的执行情况，并通过scheduledExecutorService定期send一些关键指标信息，一般是推送到zookeeper里面，不过这需要用户在代码里面设置monitor
+
+TimeoutFilter:这个就是server端判断执行有没有超时，一般url里面会带有timeout参数
+
+TraceFilter:这个从字面上理解就是用来追踪执行过程的，但是源码很简单，就是获取到TCP连接channel，然后设置channel.setAttribute(TRACE_COUNT, c);并且给channel发送一条消息

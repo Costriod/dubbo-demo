@@ -38,9 +38,9 @@ loadRegistries(true)方法将配置好的registry信息转换成一个个URL对�
 
 接下来doExportUrlsFor1Protocol方法主要干了两件事：
 
-exportLocal(url)暴露本地服务
+如果设置了scope为null或者local，则会exportLocal(url)暴露本地服务；
 
-暴露远程服务（暴露过程中需要注册到registry）
+最后会暴露远程服务（暴露过程中需要注册到registry）
 
 ```java
 if (!Constants.SCOPE_REMOTE.toString().equalsIgnoreCase(scope)) {
@@ -77,3 +77,77 @@ if (!Constants.SCOPE_LOCAL.toString().equalsIgnoreCase(scope)) {
 }
 ```
 
+其中proxyFactory.getInvoker最终会执行到JavassistProxyFactory类里面的getInvoker方法，这里需要注意，如下所示：
+
+```java
+public class JavassistProxyFactory extends AbstractProxyFactory {
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public <T> T getProxy(Invoker<T> invoker, Class<?>[] interfaces) {
+        return (T) Proxy.getProxy(interfaces).newInstance(new InvokerInvocationHandler(invoker));
+    }
+
+    @Override
+    public <T> Invoker<T> getInvoker(T proxy, Class<T> type, URL url) {
+        // TODO Wrapper cannot handle this scenario correctly: the classname contains '$'
+        //这里实际上是一个Wrapper对象
+        final Wrapper wrapper = Wrapper.getWrapper(proxy.getClass().getName().indexOf('$') < 0 ? proxy.getClass() : type);
+        //返回一个AbstractProxyInvoker对象，最终invoke方法都会执行到wrapper.invokeMethod里面
+        return new AbstractProxyInvoker<T>(proxy, type, url) {
+            @Override
+            protected Object doInvoke(T proxy, String methodName,
+                                      Class<?>[] parameterTypes,
+                                      Object[] arguments) throws Throwable {
+                return wrapper.invokeMethod(proxy, methodName, parameterTypes, arguments);
+            }
+        };
+    }
+}
+```
+
+
+
+protocol.export执行链如下：
+
+![avatar](images/export.PNG)
+
+最终在DubboProtocol里面export操作如下：
+
+```java
+    public <T> Exporter<T> export(Invoker<T> invoker) throws RpcException {
+        URL url = invoker.getUrl();
+
+        // export service.
+        String key = serviceKey(url);
+        DubboExporter<T> exporter = new DubboExporter<T>(invoker, key, exporterMap);
+        //生成一个exporter丢到exporterMap里面，key是这种格式interfaceName:version:port
+        exporterMap.put(key, exportexporterMaper);
+
+        //export an stub service for dispatching event
+        Boolean isStubSupportEvent = url.getParameter(Constants.STUB_EVENT_KEY, Constants.DEFAULT_STUB_EVENT);
+        Boolean isCallbackservice = url.getParameter(Constants.IS_CALLBACK_SERVICE, false);
+        if (isStubSupportEvent && !isCallbackservice) {
+            String stubServiceMethods = url.getParameter(Constants.STUB_EVENT_METHODS_KEY);
+            if (stubServiceMethods == null || stubServiceMethods.length() == 0) {
+                if (logger.isWarnEnabled()) {
+                    logger.warn(new IllegalStateException("consumer [" + url.getParameter(Constants.INTERFACE_KEY) +
+                            "], has set stubproxy support event ,but no stub methods founded."));
+                }
+            } else {
+                stubServiceMethodsMap.put(url.getServiceKey(), stubServiceMethods);
+            }
+        }
+        //开始建立一个端口监听，用来接收客户端请求，一般是netty，我这里是netty4
+        openServer(url);
+        //暂时还没弄明白optimizer是干什么的，从字面上可以理解为序列化优化器
+        optimizerSerialization(url);
+        return exporter;
+    }
+```
+
+这里的openServer(url)建立监听底层是通过Exchanger的Adaptive类对象的bind方法执行的
+
+最后执行RegistryProtocol的export方法，这个方法会注册服务到zookeeper
+
+##### 收到客户端请求之后，会触发netty4的channelRead事件，然后跳到MultiMessageHandler的received方法，最后跳转到ExchangeHandlerAdapter的reply方法里面，这里会从上面的exporterMap找出invoker并执行invoker.invoke方法，服务端执行链就此结束
