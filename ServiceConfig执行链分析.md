@@ -140,7 +140,7 @@ protocol.export执行链如下：
         }
         //开始建立一个端口监听，用来接收客户端请求，一般是netty，我这里是netty4
         openServer(url);
-        //暂时还没弄明白optimizer是干什么的，从字面上可以理解为序列化优化器
+        //暂时还没弄明白optimizer是干什么的，从字面上可以理解为序列化优化器，这里面就是向SerializableClassRegistry注册SerializationOptimizer类，但是这个类没地方用到，这才是最尴尬的
         optimizerSerialization(url);
         return exporter;
     }
