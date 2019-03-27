@@ -1,7 +1,4 @@
-# dubbo-demo
-基于dubbo2.6.2源码分析
-
-
+# dubbo-demo源码阅读笔记（based on v2.6.2）
 
 1.由于有一些接口没有Adaptive类，所以最终ExtensionLoader会自动为这些接口动态生成Adaptive类，前提条件是接口必须有SPI注解，同时某些方法上面必须有@Adaptive注解，因为没有@Adaptive注解的方法在动态类里面都会直接抛异常
 
