@@ -146,10 +146,37 @@ protocol.export执行链如下：
     }
 ```
 
-这里的openServer(url)建立监听底层是通过Exchanger的Adaptive类对象的bind方法执行的
+这里的openServer(url)建立监听底层是通过Exchanger的Adaptive类对象的bind方法执行的，最后执行RegistryProtocol的export方法，这个方法会注册服务到zookeeper
 
-最后执行RegistryProtocol的export方法，这个方法会注册服务到zookeeper
+- server端建立端口监听的过程
 
+> DubboProtocol.openServer(url) ----> 
+>
+> DubboProtocol.createServer(url) ----> 
+>
+> Exchangers.bind(url, requestHandler) ---->
+>
+> Exchangers.getExchanger(url).bind(url, handler) ---->
+>
+> HeaderExchanger.bind(url, handler) ---->返回一个HeaderExchangeServer对象
+>
+> ```java
+> @Override
+> public ExchangeServer bind(URL url, ExchangeHandler handler) throws RemotingException {
+>     return new HeaderExchangeServer(Transporters.bind(url, new DecodeHandler(new HeaderExchangeHandler(handler))));
+> }
+> ```
+>
+> 上面需要执行Transporters.bind(url, new DecodeHandler(new HeaderExchangeHandler(handler)))，这里执行的就是NettyTransporter.bind(url, handler)，我自己用的是netty4，netty4这块源码比较熟，如下所示
+>
+> ```java
+> @Override
+> public Server bind(URL url, ChannelHandler listener) throws RemotingException {
+>     return new NettyServer(url, listener);
+> }
+> ```
+>
+> 上述就是server端建立端口监听的过程
 
 
 - 收到客户端请求之后，会触发netty4的channelRead事件，执行链如下：
