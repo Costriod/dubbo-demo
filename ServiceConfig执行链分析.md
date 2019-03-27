@@ -150,4 +150,26 @@ protocol.export执行链如下：
 
 最后执行RegistryProtocol的export方法，这个方法会注册服务到zookeeper
 
-##### 收到客户端请求之后，会触发netty4的channelRead事件，然后跳到MultiMessageHandler的received方法，最后跳转到ExchangeHandlerAdapter的reply方法里面，这里会从上面的exporterMap找出invoker并执行invoker.invoke方法，服务端执行链就此结束
+
+
+- 收到客户端请求之后，会触发netty4的channelRead事件，执行链如下：
+
+> NettyServerHandler.channelRead---->
+>
+> NettyServer.received(channel, msg)---->
+>
+> AbstractPeer.received(channel, msg)---->
+>
+> MultiMessageHandler.received(channel, msg)---->
+>
+> HeartbeatHandler.received(channel, msg)---->
+>
+> AllChannelHandler.received(channel, msg)---->(注意这里需要通过线程池执行ChannelEventRunnable的run方法)
+>
+> DecodeHandler.received(channel, msg)---->
+>
+> HeaderExchangeHandler.received(channel, msg)---->
+>
+> HeaderExchangeHandler.handleRequest(exchangeChannel, request)---->
+>
+> DubboProtocol.ExchangeHandler.reply(channel, msg) (这里会从上面的exporterMap找出invoker并执行invoker.invoke方法，服务端执行链就此结束)
