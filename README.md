@@ -8,4 +8,6 @@
 
 4.在CodecSupport类内部会自动初始化一些Serialization类，这个是用来序列化与反序列化的，最多允许有32个，每个Serialization类都有一个唯一id，在DubboCountCodec解析消息的地方有用到，默认序列化方式是hessian2
 
-### client端已补全整个处理执行链，目前遗留一个问题：consumer端通过一个长连接与provider通信，此时发送的多个请求与接收到的响应数据怎么维持一一对应关系
+5.消费者端执行远程调用，最终都会执行到HeaderExchangeChannel的request方法，在这里会返回一个DefaultFuture对象，通过这个对象get()方法能够返回RPC服务端的处理结果，具体处理流程需参考[ReferenceConfig客户端执行链分析](./ReferenceConfig客户端执行链分析.md)里面介绍的ReferenceConfig执行远程调用原理
+
+### client端已补全整个处理执行链，也已经弄清楚消费者端与服务的多次RPC请求与响应如何保持一一对应关系

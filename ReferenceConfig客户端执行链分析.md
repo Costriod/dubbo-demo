@@ -82,3 +82,205 @@ getClients(url)执行链如下所示，本质上就是创建一个NettyClient对
 ![avatar](images/getProxy.PNG)
 
 这里最终都是通过动态代理技术创建一个代理类以及对象，本质上最终代理类对象各种操作都是操作这个invoker对象
+
+
+
+# ReferenceConfig执行远程调用原理
+
+1.通过断点调试，远程调用执行链如下：
+
+![avatar](images/invokeChain.PNG)
+
+2.从AbstractInvoker.invoke(invocation)开始，因为前面的一大串Filter链都不难
+
+```java
+    @Override
+    public Result invoke(Invocation inv) throws RpcException {
+        //........
+        /*
+        * 这里有一段没什么意义的代码，主要执行的是一个给inv参数设置一些属性值
+        */
+        try {
+            return doInvoke(invocation);//核心是从doInvoke开始
+        } catch (InvocationTargetException e) { // biz exception
+            Throwable te = e.getTargetException();
+            if (te == null) {
+                return new RpcResult(e);
+            } else {
+                if (te instanceof RpcException) {
+                    ((RpcException) te).setCode(RpcException.BIZ_EXCEPTION);
+                }
+                return new RpcResult(te);
+            }
+        } catch (RpcException e) {
+            if (e.isBiz()) {
+                return new RpcResult(e);
+            } else {
+                throw e;
+            }
+        } catch (Throwable e) {
+            return new RpcResult(e);
+        }
+    }
+```
+
+3.前面那里接着会执行到DubboInvoker.doInvoke(invocation)方法里面，这里面干了如下几件事：
+
+```java
+@Override
+protected Result doInvoke(final Invocation invocation) throws Throwable {
+    RpcInvocation inv = (RpcInvocation) invocation;
+    final String methodName = RpcUtils.getMethodName(invocation);
+    inv.setAttachment(Constants.PATH_KEY, getUrl().getPath());
+    inv.setAttachment(Constants.VERSION_KEY, version);
+
+    ExchangeClient currentClient;
+    if (clients.length == 1) {//如果和RPC服务端只有一个连接
+        currentClient = clients[0];
+    } else {
+        currentClient = clients[index.getAndIncrement() % clients.length];
+    }
+    try {
+        boolean isAsync = RpcUtils.isAsync(getUrl(), invocation);
+        boolean isOneway = RpcUtils.isOneway(getUrl(), invocation);
+        int timeout = getUrl().getMethodParameter(methodName, Constants.TIMEOUT_KEY, Constants.DEFAULT_TIMEOUT);
+        if (isOneway) {//这种是单向的请求，无需等待对方返回结果
+            boolean isSent = getUrl().getMethodParameter(methodName, Constants.SENT_KEY, false);
+            currentClient.send(inv, isSent);
+            RpcContext.getContext().setFuture(null);
+            return new RpcResult();
+        } else if (isAsync) {//这种是异步执行
+            ResponseFuture future = currentClient.request(inv, timeout);
+            RpcContext.getContext().setFuture(new FutureAdapter<Object>(future));
+            return new RpcResult();
+        } else {
+            RpcContext.getContext().setFuture(null);
+            return (Result) currentClient.request(inv, timeout).get();//一般是走到这里
+        }
+    } catch (TimeoutException e) {
+        throw new RpcException(RpcException.TIMEOUT_EXCEPTION, "Invoke remote method timeout. method: " + invocation.getMethodName() + ", provider: " + getUrl() + ", cause: " + e.getMessage(), e);
+    } catch (RemotingException e) {
+        throw new RpcException(RpcException.NETWORK_EXCEPTION, "Failed to invoke remote method: " + invocation.getMethodName() + ", provider: " + getUrl() + ", cause: " + e.getMessage(), e);
+    }
+}
+```
+
+注意上面(Result) currentClient.request(inv, timeout).get()这个调用，currentClient本身是一个ReferenceCountExchangeClient，currentClient.request(inv, timeout)会返回一个future对象，ReferenceCountExchangeClient的request方法本质上执行了HeaderExchangeChannel的request方法，这个方法会执行两个动作：
+
+```java
+@Override
+public ResponseFuture request(Object request, int timeout) throws RemotingException {
+    if (closed) {
+        throw new RemotingException(this.getLocalAddress(), null, "Failed to send request " + request + ", cause: The channel " + this + " is closed!");
+    }
+    // create request.
+    Request req = new Request();//封装一个request对象，这个对象有一个全局唯一递增的id，重点关注
+    req.setVersion("2.0.0");
+    req.setTwoWay(true);
+    req.setData(request);
+    DefaultFuture future = new DefaultFuture(channel, req, timeout);//封装一个future对象
+    try {
+        channel.send(req);//把req对象发送到RPC服务端
+    } catch (RemotingException e) {
+        future.cancel();
+        throw e;
+    }
+    return future;//返回这个future对象
+}
+```
+
+上方的代码注意Request对象，这个对象在构造方法里面会初始化一个id，这个id是一个静态AtomicLong不断叠加的返回值，保证全局并发唯一并且递增，接着封装为一个DefaultFuture，channel发送这个request对象到RPC服务端，最后返回这个DefaultFuture，最终通过currentClient.request(inv, timeout).get()阻塞直到RPC服务端返回结果
+
+
+
+下面分析DefaultFuture执行了什么操作：
+
+```java
+public DefaultFuture(Channel channel, Request request, int timeout) {
+    this.channel = channel;
+    this.request = request;
+    this.id = request.getId();//获取request的唯一id
+    this.timeout = timeout > 0 ? timeout : channel.getUrl().getPositiveParameter(Constants.TIMEOUT_KEY, Constants.DEFAULT_TIMEOUT);//初始化一个超时时间
+    // put into waiting map.
+    FUTURES.put(id, this);
+    CHANNELS.put(id, channel);
+}
+```
+
+首先初始化自己，然后把自己放入一个静态成员FUTURES里面，channel放入CHANNELS静态变量里面，key都是前面那个request的id属性（这个id全局递增且每个request全局唯一）
+
+
+
+DefaultFuture的get()方法如下：
+
+```java
+@Override
+public Object get() throws RemotingException {
+    return get(timeout);
+}
+
+@Override
+public Object get(int timeout) throws RemotingException {
+    if (timeout <= 0) {
+        timeout = Constants.DEFAULT_TIMEOUT;
+    }
+    if (!isDone()) {
+        long start = System.currentTimeMillis();
+        lock.lock();
+        try {
+            while (!isDone()) {
+                done.await(timeout, TimeUnit.MILLISECONDS);//在这里
+                if (isDone() || System.currentTimeMillis() - start > timeout) {
+                    break;
+                }
+            }
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        } finally {
+            lock.unlock();
+        }
+        if (!isDone()) {
+            throw new TimeoutException(sent > 0, channel, getTimeoutMessage(false));
+        }
+    }
+    return returnFromResponse();
+}
+```
+
+从上面的代码可以看出，DefaultFuture的get()方法主要是让当前线程进入阻塞状态，等到下次接收到RPC服务端返回的数据之后触发received方法
+
+```java
+public static void received(Channel channel, Response response) {
+    try {
+        DefaultFuture future = FUTURES.remove(response.getId());//注意这里
+        if (future != null) {
+            future.doReceived(response);//执行下面的doReceived方法
+        } else {
+            logger.warn("The timeout response finally returned at "
+                    + (new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS").format(new Date()))
+                    + ", response " + response
+                    + (channel == null ? "" : ", channel: " + channel.getLocalAddress()
+                    + " -> " + channel.getRemoteAddress()));
+        }
+    } finally {
+        CHANNELS.remove(response.getId());
+    }
+}
+
+private void doReceived(Response res) {
+    lock.lock();
+    try {
+        response = res;
+        if (done != null) {
+            done.signal();
+        }
+    } finally {
+        lock.unlock();
+    }
+    if (callback != null) {
+        invokeCallback(callback);
+    }
+}
+```
+
+注意上面的DefaultFuture future = FUTURES.remove(response.getId())，这里面利用到了response的id属性，这个是服务的执行结束之后返回的，其中那个id就是之前的request对象的id，所以这里返回的是FUTURES里面那个key对应的DefaultFuture对象，然后执行下面的doReceived，在这里就唤醒了前面一直阻塞的get()方法，这样就解释通了为什么消费者端发送的多次请求与响应数据能够保持一一对应关系
