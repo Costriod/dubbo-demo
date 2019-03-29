@@ -21,12 +21,13 @@ public class CustomServer {
 		
 		RegistryConfig registry = new RegistryConfig();
 		registry.setId("registry");
-		registry.setAddress("zookeeper://192.168.1.120:2181");
+		registry.setAddress("zookeeper://127.0.0.1:2181");
 		registry.setClient("zkclient");
 		
 		// 服务提供者协议配置
 		ProtocolConfig dubboProtocol = new ProtocolConfig();
 		dubboProtocol.setName("dubbo");
+		dubboProtocol.setHost("127.0.0.1");
 		dubboProtocol.setServer("netty4");
 		dubboProtocol.setPort(20890);
 		dubboProtocol.setThreads(4);

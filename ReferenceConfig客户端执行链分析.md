@@ -47,7 +47,7 @@ private <T> Invoker<T> doRefer(Cluster cluster, Registry registry, Class<T> type
 
 ![avatar](images/doReferSubscrabe.PNG)
 
-在这里DubboProtocol的refer方法返回了一个DubboInvoker对象，并且这个invoker对象加入到了一个invokers集合里面，这里的getClients(url)会和RPC服务端建立长连接
+在这里DubboProtocol的refer方法返回了一个DubboInvoker对象，并且这个invoker对象加入到了一个invokers集合里面，这里的getClients(url)会和RPC服务端建立长连接，注意里面RegistryDirectory的toInvokers方法里面入参是zookeeper里面注册的某一类服务所有url，如一个服务有多副本，分布在不同主机，然后注册到zookeeper都是在同一个path下面，这里消费者端会全部读出来并利用for循环和每个副本创建一个DubboInvoker对象，每个DubboInvoker对象和服务端副本都有长连接
 
 ```java
 @Override
@@ -59,6 +59,9 @@ public <T> Invoker<T> refer(Class<T> serviceType, URL url) throws RpcException {
     return invoker;
 }
 ```
+getClients(url)执行链如下所示，本质上就是创建一个NettyClient对象，这个对象用于与RPC服务端连接
+
+![avatar](images/getClients.png)
 
 2.2注意上面的RegistryDirectory.toInvokers(invokerUrls)方法会将前面DubboProtocol.refer返回的DubboInvoker封装成一个InvokerDelegate对象，然后会放入一个Map对象里面，map最终会赋值给RegistryDirectory的urlInvokerMap属性
 
