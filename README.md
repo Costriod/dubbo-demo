@@ -6,6 +6,6 @@
 
 3.经实际测试，默认是failover策略，server端执行超时会导致客户端发送最多3次RPC请求，这里需要注意一下幂等性
 
-4.在CodecSupport类内部会自动初始化一些Serialization类，这个是用来序列化与反序列花的，最多允许有32个，每个Serialization类都有一个唯一id，在DubboCountCodec解析消息的地方有用到，默认序列化方式是hessian2
+4.在CodecSupport类内部会自动初始化一些Serialization类，这个是用来序列化与反序列化的，最多允许有32个，每个Serialization类都有一个唯一id，在DubboCountCodec解析消息的地方有用到，默认序列化方式是hessian2
 
-### client端已补全代理对象创建流程，后续还要补全负载均衡实现原理
+### client端已补全整个处理执行链，目前遗留一个问题：consumer端通过一个长连接与provider通信，此时发送的多个请求与接收到的响应数据怎么维持一一对应关系
