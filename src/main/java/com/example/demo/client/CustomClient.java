@@ -6,9 +6,11 @@ import com.alibaba.dubbo.config.RegistryConfig;
 import com.example.demo.common.HelloService;
 import com.example.demo.common.User;
 
+import java.io.IOException;
+
 public class CustomClient {
 
-	public static void main(String[] args) {
+	public static void main(String[] args) throws IOException {
 		// 当前应用配置
 		ApplicationConfig application = new ApplicationConfig();
 		application.setName("client");
@@ -19,8 +21,7 @@ public class CustomClient {
 		// 连接注册中心配置
 		RegistryConfig registry = new RegistryConfig();
 		registry.setId("registry");
-		registry.setAddress("zookeeper://127.0.0.1:2181");
-		registry.setClient("zkclient");
+		registry.setAddress("nacos://127.0.0.1:8848");
 		 
 		// 注意：ReferenceConfig为重对象，内部封装了与注册中心的连接，以及与服务提供方的连接
 		 

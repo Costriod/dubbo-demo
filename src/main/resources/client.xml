@@ -10,6 +10,6 @@
     <dubbo:parameter key="qos.port" value="22222"/>
     </dubbo:application>
     <dubbo:consumer client="netty4"/>
-    <dubbo:registry address="zookeeper://192.168.1.120:2181" client="zkclient"/>
-    <dubbo:reference id="helloService" interface="com.example.demo.common.HelloService"/>
+    <dubbo:registry address="nacos://127.0.0.1:8848"/>
+    <dubbo:reference id="helloService" interface="com.example.demo.common.HelloService" version="1.0.0"/>
 </beans>

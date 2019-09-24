@@ -21,8 +21,7 @@ public class CustomServer {
 		
 		RegistryConfig registry = new RegistryConfig();
 		registry.setId("registry");
-		registry.setAddress("zookeeper://127.0.0.1:2181");
-		registry.setClient("zkclient");
+		registry.setAddress("nacos://127.0.0.1:8848");
 		
 		// 服务提供者协议配置
 		ProtocolConfig dubboProtocol = new ProtocolConfig();
